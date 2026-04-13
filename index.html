@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>/pvp - Claude Code Battle Arena</title>
+<meta name="description" content="Claude Codeユーザー同士のオンライン対戦ゲーム。URLを送るだけで即バトル開始！">
+<meta property="og:title" content="/pvp - Claude Code Battle Arena">
+<meta property="og:description" content="Claude Codeで /pvp と打つだけ。URLシェアでリアルタイム対戦！">
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Noto+Sans+JP:wght@400;700;900&display=swap');
+  *{margin:0;padding:0;box-sizing:border-box}
+  :root{--p1:#3b82f6;--p2:#f97316;--accent:#6366f1;--bg:#0a0a0f;--card:#0f172a;--border:#1e293b;--text:#e2e8f0;--dim:#64748b}
+  body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow:hidden}
+  .screen{display:none;width:100vw;height:100vh;position:absolute;top:0;left:0;flex-direction:column;align-items:center;justify-content:center}
+  .screen.active{display:flex}
+  .pixel{font-family:'Press Start 2P',cursive}
+
+  /* ===== LOBBY ===== */
+  #lobby{background:radial-gradient(ellipse at center,#1a1a2e 0%,var(--bg) 70%);gap:20px}
+  .logo{font-size:clamp(32px,6vw,64px);color:#fff;text-shadow:0 0 20px rgba(99,102,241,.8),0 0 50px rgba(99,102,241,.3);animation:glow 2s ease-in-out infinite alternate}
+  @keyframes glow{to{text-shadow:0 0 30px rgba(99,102,241,1),0 0 60px rgba(99,102,241,.5),0 0 90px rgba(99,102,241,.2)}}
+  .logo-sub{font-size:clamp(10px,1.8vw,16px);color:var(--accent);letter-spacing:4px;margin-bottom:30px}
+  .lobby-matchup{display:flex;align-items:center;gap:24px;margin-bottom:40px}
+  .lobby-char{font-size:clamp(36px,6vw,64px);animation:float 3s ease-in-out infinite}
+  .lobby-char:nth-child(3){animation-delay:.5s}
+  @keyframes float{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+  .vs{font-size:clamp(28px,5vw,52px);color:#ef4444;text-shadow:0 0 20px rgba(239,68,68,.5)}
+  .lobby-btns{display:flex;gap:16px;flex-wrap:wrap;justify-content:center}
+  .btn{font-family:'Noto Sans JP',sans-serif;padding:16px 36px;border-radius:12px;font-size:16px;font-weight:700;cursor:pointer;transition:all .2s;border:2px solid}
+  .btn-create{background:rgba(99,102,241,.15);border-color:var(--accent);color:var(--text)}
+  .btn-create:hover{background:rgba(99,102,241,.3);transform:translateY(-2px);box-shadow:0 4px 20px rgba(99,102,241,.3)}
+  .btn-join{background:rgba(249,115,22,.1);border-color:var(--p2);color:var(--text)}
+  .btn-join:hover{background:rgba(249,115,22,.2);transform:translateY(-2px);box-shadow:0 4px 20px rgba(249,115,22,.3)}
+  .join-input{display:none;margin-top:16px;gap:10px;align-items:center}
+  .join-input.show{display:flex}
+  .join-input input{font-family:'Press Start 2P',cursive;font-size:18px;padding:12px 16px;width:180px;text-align:center;border:2px solid var(--border);border-radius:10px;background:var(--card);color:var(--text);letter-spacing:6px;text-transform:uppercase}
+  .join-input input:focus{outline:none;border-color:var(--accent)}
+  .btn-sm{padding:12px 20px;font-size:14px}
+  .error-msg{color:#ef4444;font-size:13px;margin-top:8px;min-height:20px}
+
+  /* ===== WAITING ===== */
+  #waiting{background:radial-gradient(ellipse at center,#1a1a2e 0%,var(--bg) 70%);gap:24px}
+  .wait-title{font-size:clamp(14px,2.5vw,22px);color:var(--dim)}
+  .room-code{font-size:clamp(36px,7vw,72px);color:#fff;letter-spacing:12px;text-shadow:0 0 20px rgba(99,102,241,.6)}
+  .share-url{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 20px;font-size:13px;color:var(--dim);max-width:90vw;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer;transition:border-color .2s}
+  .share-url:hover{border-color:var(--accent)}
+  .share-url.copied{border-color:#22c55e;color:#22c55e}
+  .wait-dots{font-size:18px;color:var(--accent);animation:dots 1.5s infinite}
+  @keyframes dots{0%{content:''}33%{content:'.'}66%{content:'..'}100%{content:'...'}}
+  .wait-dots::after{content:'';animation:dots 1.5s infinite}
+  .btn-cancel{background:transparent;border-color:var(--border);color:var(--dim);padding:10px 24px;font-size:13px}
+
+  /* ===== BATTLE ===== */
+  #battle{background:radial-gradient(ellipse at top,#1a1a2e 0%,var(--bg) 70%)}
+  .battle-top{width:100%;padding:8px 16px;display:flex;justify-content:center}
+  .turn-badge{font-size:11px;padding:4px 14px;border-radius:20px;border:1px solid var(--border);color:var(--dim)}
+  .battle-stage{flex:1;width:100%;display:flex;align-items:center;justify-content:space-around;padding:10px 20px;position:relative}
+  .fighter{display:flex;flex-direction:column;align-items:center;gap:8px;transition:transform .3s}
+  .fighter.shake{animation:shake .4s ease-in-out}
+  @keyframes shake{0%,100%{transform:translateX(0)}20%{transform:translateX(-14px) rotate(-2deg)}40%{transform:translateX(11px) rotate(1deg)}60%{transform:translateX(-7px)}80%{transform:translateX(4px)}}
+  .sprite{width:clamp(70px,14vw,120px);height:clamp(70px,14vw,120px);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:clamp(34px,6vw,58px);position:relative}
+  .sprite.p1{background:radial-gradient(circle,rgba(59,130,246,.25),transparent);box-shadow:0 0 30px rgba(59,130,246,.3)}
+  .sprite.p2{background:radial-gradient(circle,rgba(249,115,22,.25),transparent);box-shadow:0 0 30px rgba(249,115,22,.3)}
+  .fighter-label{font-weight:900;font-size:clamp(12px,1.8vw,17px);letter-spacing:1px}
+  .bars{width:clamp(100px,18vw,200px)}
+  .bar-row{margin-bottom:4px}
+  .bar-head{display:flex;justify-content:space-between;font-size:10px;font-weight:700;margin-bottom:2px}
+  .bar-out{width:100%;height:12px;background:var(--border);border-radius:6px;overflow:hidden}
+  .bar-in{height:100%;border-radius:6px;transition:width .5s ease-out,background .3s}
+  .bar-hp{background:linear-gradient(90deg,#22c55e,#4ade80)}
+  .bar-hp.warn{background:linear-gradient(90deg,#eab308,#facc15)}
+  .bar-hp.crit{background:linear-gradient(90deg,#ef4444,#f87171)}
+  .bar-mp{background:linear-gradient(90deg,#3b82f6,#60a5fa)}
+  .vs-mid{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:clamp(20px,4vw,36px);color:rgba(255,255,255,.08)}
+
+  /* Timer */
+  .timer-area{width:100%;padding:0 20px;display:flex;align-items:center;gap:10px}
+  .timer-bar-out{flex:1;height:6px;background:var(--border);border-radius:3px;overflow:hidden}
+  .timer-bar-in{height:100%;background:var(--accent);border-radius:3px;transition:width .3s linear}
+  .timer-bar-in.urgent{background:#ef4444}
+  .timer-text{font-size:12px;color:var(--dim);min-width:30px;text-align:right}
+
+  /* Dialog */
+  .dialog{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px 20px;margin:8px 16px;min-height:44px;display:flex;align-items:center;font-size:clamp(12px,1.4vw,15px);line-height:1.5}
+
+  /* Actions */
+  .actions{display:grid;grid-template-columns:1fr 1fr;gap:6px;padding:8px 14px 16px;width:100%;background:rgba(15,23,42,.9);border-top:1px solid var(--border)}
+  .act{padding:13px 10px;border:2px solid var(--border);border-radius:10px;background:rgba(30,41,59,.7);color:var(--text);font-size:clamp(13px,1.4vw,15px);font-weight:700;cursor:pointer;transition:all .2s;font-family:'Noto Sans JP',sans-serif;display:flex;align-items:center;gap:6px}
+  .act:hover:not(:disabled):not(.locked){border-color:var(--accent);background:rgba(99,102,241,.12);transform:translateY(-2px)}
+  .act:disabled{opacity:.35;cursor:not-allowed}
+  .act.locked{border-color:#22c55e;background:rgba(34,197,94,.12);color:#4ade80}
+  .act .key{font-family:'Press Start 2P',cursive;font-size:9px;background:var(--border);padding:2px 5px;border-radius:3px}
+  .act .cost{font-size:10px;color:#60a5fa;margin-left:auto}
+  .opponent-status{text-align:center;font-size:12px;color:var(--dim);padding:4px}
+
+  /* Damage */
+  .dmg{position:absolute;font-family:'Press Start 2P',cursive;font-size:24px;font-weight:900;pointer-events:none;animation:dmgUp .9s ease-out forwards;z-index:100}
+  .dmg.red{color:#ef4444}.dmg.green{color:#22c55e}.dmg.gray{color:#64748b}.dmg.gold{color:#fbbf24;font-size:30px}
+  @keyframes dmgUp{0%{opacity:1;transform:translateY(0) scale(1)}50%{opacity:1;transform:translateY(-35px) scale(1.15)}100%{opacity:0;transform:translateY(-60px) scale(.8)}}
+  .hit-flash{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(255,255,255,.12);pointer-events:none;animation:flashOut .15s ease-out forwards;z-index:50}
+  @keyframes flashOut{to{opacity:0}}
+
+  /* Reveal overlay */
+  .reveal{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,.85);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:200;animation:fadeIn .3s}
+  @keyframes fadeIn{from{opacity:0}to{opacity:1}}
+  .reveal-title{font-size:clamp(16px,3vw,28px);margin-bottom:30px;color:var(--dim)}
+  .reveal-actions{display:flex;gap:clamp(20px,8vw,80px);align-items:center;margin-bottom:20px}
+  .reveal-card{background:var(--card);border:2px solid var(--border);border-radius:14px;padding:20px 28px;text-align:center;min-width:120px;animation:cardIn .4s ease-out backwards}
+  .reveal-card:nth-child(3){animation-delay:.2s}
+  @keyframes cardIn{from{opacity:0;transform:scale(.7) rotateY(90deg)}to{opacity:1;transform:scale(1) rotateY(0)}}
+  .reveal-card .who{font-size:11px;color:var(--dim);margin-bottom:8px}
+  .reveal-card .what{font-size:28px;margin-bottom:4px}
+  .reveal-card .name{font-size:13px;font-weight:700}
+  .reveal-vs{font-size:24px;color:rgba(255,255,255,.15)}
+  .reveal-result{font-size:clamp(13px,1.8vw,18px);color:var(--text);text-align:center;line-height:1.8}
+
+  /* ===== RESULT ===== */
+  #result{background:radial-gradient(ellipse at center,#1a1a2e 0%,var(--bg) 70%);gap:16px;text-align:center}
+  .result-title{font-size:clamp(24px,5vw,48px)}
+  .result-title.win{color:#fbbf24;text-shadow:0 0 30px rgba(251,191,36,.6);animation:glow 1.5s ease-in-out infinite alternate}
+  .result-title.lose{color:#ef4444;text-shadow:0 0 30px rgba(239,68,68,.5)}
+  .result-msg{font-size:clamp(14px,2vw,18px);color:var(--dim);max-width:400px;line-height:1.6}
+  .result-stats{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:20px 32px;font-size:14px;line-height:2;text-align:left}
+  .btn-group{display:flex;gap:12px;flex-wrap:wrap;justify-content:center}
+
+  .confetti{position:fixed;width:10px;height:10px;top:-10px;z-index:300;animation:confFall linear forwards}
+  @keyframes confFall{to{top:110vh;transform:rotate(720deg)}}
+
+  /* Connection status */
+  .conn-status{position:fixed;top:12px;right:16px;font-size:11px;padding:4px 12px;border-radius:20px;z-index:400;border:1px solid}
+  .conn-status.ok{color:#22c55e;border-color:rgba(34,197,94,.3);background:rgba(34,197,94,.08)}
+  .conn-status.ng{color:#ef4444;border-color:rgba(239,68,68,.3);background:rgba(239,68,68,.08)}
+
+  @media(max-width:500px){.actions{gap:5px;padding:6px 8px 12px}.act{padding:10px 7px;font-size:12px}.bars{width:clamp(80px,22vw,160px)}}
+</style>
+</head>
+<body>
+
+<div class="conn-status" id="conn" style="display:none"></div>
+
+<!-- LOBBY -->
+<div id="lobby" class="screen active">
+  <div class="pixel logo">/pvp</div>
+  <div class="pixel logo-sub">BATTLE ARENA</div>
+  <div class="lobby-matchup">
+    <div class="lobby-char">🧑‍💻</div>
+    <div class="pixel vs">VS</div>
+    <div class="lobby-char">👨‍💻</div>
+  </div>
+  <div class="lobby-btns">
+    <button class="btn btn-create" onclick="createRoom()">🎮 部屋を作る</button>
+    <button class="btn btn-join" onclick="toggleJoin()">🚪 部屋に入る</button>
+  </div>
+  <div class="join-input" id="join-input">
+    <input type="text" id="room-input" placeholder="ABCD" maxlength="4" autocomplete="off" spellcheck="false">
+    <button class="btn btn-sm btn-create" onclick="joinRoom()">参戦！</button>
+  </div>
+  <div class="error-msg" id="lobby-error"></div>
+</div>
+
+<!-- WAITING -->
+<div id="waiting" class="screen">
+  <div class="wait-title">ルームコード</div>
+  <div class="pixel room-code" id="room-code-display">----</div>
+  <div class="share-url" id="share-url" onclick="copyUrl()">URLをコピー</div>
+  <div>対戦相手を待っています<span class="wait-dots"></span></div>
+  <button class="btn btn-cancel" onclick="cancelWait()">キャンセル</button>
+</div>
+
+<!-- BATTLE -->
+<div id="battle" class="screen">
+  <div class="battle-top"><div class="pixel turn-badge" id="turn-badge">TURN 1</div></div>
+  <div class="battle-stage">
+    <div class="pixel vs-mid">VS</div>
+    <div class="fighter" id="f1">
+      <div class="sprite p1" id="s1">🧑‍💻</div>
+      <div class="fighter-label" style="color:var(--p1)" id="n1">あなた</div>
+      <div class="bars">
+        <div class="bar-row"><div class="bar-head"><span>HP</span><span id="hp1t">100/100</span></div><div class="bar-out"><div class="bar-in bar-hp" id="hp1b" style="width:100%"></div></div></div>
+        <div class="bar-row"><div class="bar-head"><span>MP</span><span id="mp1t">50/50</span></div><div class="bar-out"><div class="bar-in bar-mp" id="mp1b" style="width:100%"></div></div></div>
+      </div>
+    </div>
+    <div class="fighter" id="f2">
+      <div class="sprite p2" id="s2">👨‍💻</div>
+      <div class="fighter-label" style="color:var(--p2)" id="n2">相手</div>
+      <div class="bars">
+        <div class="bar-row"><div class="bar-head"><span>HP</span><span id="hp2t">100/100</span></div><div class="bar-out"><div class="bar-in bar-hp" id="hp2b" style="width:100%"></div></div></div>
+        <div class="bar-row"><div class="bar-head"><span>MP</span><span id="mp2t">50/50</span></div><div class="bar-out"><div class="bar-in bar-mp" id="mp2b" style="width:100%"></div></div></div>
+      </div>
+    </div>
+  </div>
+  <div class="timer-area"><div class="timer-bar-out"><div class="timer-bar-in" id="timer-bar" style="width:100%"></div></div><div class="pixel timer-text" id="timer-text">15</div></div>
+  <div class="dialog" id="dialog">アクションを選べ！</div>
+  <div class="opponent-status" id="opp-status"></div>
+  <div class="actions" id="action-panel">
+    <button class="act" onclick="pick('attack')"><span class="key">1</span>⚔️ こうげき</button>
+    <button class="act" onclick="pick('heavy')"><span class="key">2</span>💥 強攻撃<span class="cost">MP15</span></button>
+    <button class="act" onclick="pick('defend')"><span class="key">3</span>🛡️ ぼうぎょ</button>
+    <button class="act" onclick="pick('heal')"><span class="key">4</span>💊 かいふく<span class="cost">MP20</span></button>
+  </div>
+</div>
+
+<!-- RESULT -->
+<div id="result" class="screen">
+  <div class="pixel result-title" id="res-title">WIN!</div>
+  <div class="result-msg" id="res-msg"></div>
+  <div class="result-stats" id="res-stats"></div>
+  <div class="btn-group">
+    <button class="btn btn-create" onclick="rematch()">🔄 リマッチ</button>
+    <button class="btn btn-join" onclick="shareResult()">📤 結果をシェア</button>
+    <button class="btn btn-cancel" onclick="backToLobby()">🏠 ロビーへ</button>
+  </div>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+// ===== CONFIG =====
+const CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+const TURN_TIME = 15;
+const ACTION_NAMES = { attack: '⚔️ こうげき', heavy: '💥 強攻撃', defend: '🛡️ ぼうぎょ', heal: '💊 かいふく' };
+const EMOJIS = ['🧑‍💻','👨‍💻','👩‍💻','🦸','🧙','🥷','🤺','🏴‍☠️','🦊','🐉','🤖','👾','🎭','⚡','🔮'];
+
+// ===== STATE =====
+let peer = null, conn = null, isHost = false, roomCode = '';
+let myEmoji = EMOJIS[Math.floor(Math.random()*EMOJIS.length)];
+let oppEmoji = '👨‍💻';
+let game = null, myAction = null, timerInterval = null, timeLeft = 0;
+
+// ===== HELPERS =====
+const $ = id => document.getElementById(id);
+const show = id => { document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active')); $(id).classList.add('active'); };
+function genCode() { let c=''; for(let i=0;i<4;i++) c+=CHARS[Math.floor(Math.random()*CHARS.length)]; return c; }
+function getShareUrl() { return `${location.origin}${location.pathname}?room=${roomCode}`; }
+function setConn(ok,txt) { const el=$('conn'); el.style.display='block'; el.className='conn-status '+(ok?'ok':'ng'); el.textContent=txt; }
+
+// ===== LOBBY =====
+function toggleJoin() {
+  const el=$('join-input');
+  el.classList.toggle('show');
+  if(el.classList.contains('show')) $('room-input').focus();
+}
+
+// Auto-join from URL
+(function(){
+  const params = new URLSearchParams(location.search);
+  const r = params.get('room');
+  if(r && r.length===4) { setTimeout(()=>{ $('room-input').value=r; toggleJoin(); joinRoom(); },500); }
+})();
+
+// ===== CREATE ROOM =====
+function createRoom() {
+  roomCode = genCode();
+  isHost = true;
+  $('lobby-error').textContent = '';
+
+  peer = new Peer('pvp-'+roomCode, { debug: 0 });
+  peer.on('open', () => {
+    $('room-code-display').textContent = roomCode;
+    $('share-url').textContent = getShareUrl();
+    $('share-url').classList.remove('copied');
+    show('waiting');
+    setConn(true,'接続OK');
+  });
+  peer.on('error', e => {
+    if(e.type==='unavailable-id') { roomCode=genCode(); peer.destroy(); createRoom(); return; }
+    $('lobby-error').textContent = '接続エラー: '+e.type;
+    setConn(false,'エラー');
+  });
+  peer.on('connection', c => {
+    conn = c;
+    setupConn();
+  });
+}
+
+function copyUrl() {
+  navigator.clipboard.writeText(getShareUrl()).then(()=>{ $('share-url').textContent='コピーしました！'; $('share-url').classList.add('copied'); setTimeout(()=>{$('share-url').textContent=getShareUrl();$('share-url').classList.remove('copied');},2000); });
+}
+
+function cancelWait() { if(peer) peer.destroy(); peer=null; conn=null; show('lobby'); $('conn').style.display='none'; }
+
+// ===== JOIN ROOM =====
+function joinRoom() {
+  roomCode = $('room-input').value.toUpperCase().trim();
+  if(roomCode.length!==4) { $('lobby-error').textContent='4文字のルームコードを入力'; return; }
+  isHost = false;
+  $('lobby-error').textContent = '接続中...';
+
+  peer = new Peer(undefined, { debug: 0 });
+  peer.on('open', () => {
+    conn = peer.connect('pvp-'+roomCode, { reliable: true });
+    conn.on('open', () => { setupConn(); });
+    conn.on('error', () => { $('lobby-error').textContent='接続失敗。コードを確認して'; setConn(false,'接続失敗'); });
+    setTimeout(()=>{ if(!conn||!conn.open){$('lobby-error').textContent='タイムアウト。コードを確認して';setConn(false,'タイムアウト');} },8000);
+  });
+  peer.on('error', e => { $('lobby-error').textContent='接続エラー: '+e.type; setConn(false,'エラー'); });
+}
+
+// ===== CONNECTION =====
+function setupConn() {
+  setConn(true,'対戦相手と接続！');
+  conn.on('data', onMessage);
+  conn.on('close', () => { setConn(false,'切断'); if(game&&game.phase==='battle') $('dialog').textContent='相手が切断しました...'; });
+
+  // Exchange emoji
+  send({ type:'hello', emoji: myEmoji });
+
+  if(isHost) {
+    // Host starts the game after short delay
+    setTimeout(()=>startGame(), 1500);
+  }
+}
+
+function send(data) { if(conn&&conn.open) conn.send(data); }
+
+function onMessage(data) {
+  switch(data.type) {
+    case 'hello':
+      oppEmoji = data.emoji;
+      break;
+    case 'start':
+      game = data.game;
+      game.phase = 'battle';
+      myAction = null;
+      showBattle();
+      break;
+    case 'action_locked':
+      $('opp-status').textContent = '🔒 相手はアクションを選んだ！';
+      break;
+    case 'action':
+      // Host receives guest action
+      if(isHost) resolveActions(data.action);
+      break;
+    case 'resolve':
+      // Guest receives resolution
+      showReveal(data);
+      break;
+    case 'rematch_req':
+      if(confirm('相手がリマッチを申し込んでいます！受ける？')) {
+        send({type:'rematch_ok'});
+        if(isHost) { setTimeout(()=>startGame(),500); }
+      }
+      break;
+    case 'rematch_ok':
+      if(isHost) setTimeout(()=>startGame(),500);
+      break;
+  }
+}
+
+// ===== GAME =====
+function newGameState() {
+  return {
+    p1: { hp:100, maxHp:100, mp:50, maxMp:50 },
+    p2: { hp:100, maxHp:100, mp:50, maxMp:50 },
+    turn: 1,
+    phase: 'battle',
+    log: []
+  };
+}
+
+function startGame() {
+  game = newGameState();
+  myAction = null;
+  send({ type:'start', game });
+  showBattle();
+}
+
+function showBattle() {
+  show('battle');
+  const me = isHost ? game.p1 : game.p2;
+  const opp = isHost ? game.p2 : game.p1;
+  $('s1').textContent = myEmoji;
+  $('s2').textContent = oppEmoji;
+  $('n1').textContent = 'あなた';
+  $('n2').textContent = '相手';
+  $('opp-status').textContent = '';
+  updateBars(me,opp);
+  $('dialog').textContent = `TURN ${game.turn} - アクションを選べ！`;
+  $('turn-badge').textContent = `TURN ${game.turn}`;
+  enableActions(me);
+  startTimer();
+}
+
+function updateBars(me,opp) {
+  const hp1p = Math.max(0,me.hp/me.maxHp*100), mp1p = Math.max(0,me.mp/me.maxMp*100);
+  const hp2p = Math.max(0,opp.hp/opp.maxHp*100), mp2p = Math.max(0,opp.mp/opp.maxMp*100);
+  $('hp1b').style.width=hp1p+'%'; $('hp1b').className='bar-in bar-hp'+(hp1p<25?' crit':hp1p<50?' warn':'');
+  $('hp1t').textContent=`${Math.max(0,me.hp)}/${me.maxHp}`;
+  $('mp1b').style.width=mp1p+'%'; $('mp1t').textContent=`${Math.max(0,me.mp)}/${me.maxMp}`;
+  $('hp2b').style.width=hp2p+'%'; $('hp2b').className='bar-in bar-hp'+(hp2p<25?' crit':hp2p<50?' warn':'');
+  $('hp2t').textContent=`${Math.max(0,opp.hp)}/${opp.maxHp}`;
+  $('mp2b').style.width=mp2p+'%'; $('mp2t').textContent=`${Math.max(0,opp.mp)}/${opp.maxMp}`;
+}
+
+function enableActions(me) {
+  const btns = $('action-panel').querySelectorAll('.act');
+  btns.forEach(b=>{ b.disabled=false; b.classList.remove('locked'); });
+  if(me.mp<15) btns[1].disabled=true;
+  if(me.mp<20) btns[3].disabled=true;
+}
+
+function disableActions() {
+  $('action-panel').querySelectorAll('.act').forEach(b=>b.disabled=true);
+}
+
+// ===== TIMER =====
+function startTimer() {
+  timeLeft = TURN_TIME;
+  $('timer-bar').style.width='100%';
+  $('timer-bar').classList.remove('urgent');
+  $('timer-text').textContent = timeLeft;
+
+  clearInterval(timerInterval);
+  timerInterval = setInterval(()=>{
+    timeLeft -= 0.1;
+    const pct = Math.max(0, timeLeft/TURN_TIME*100);
+    $('timer-bar').style.width = pct+'%';
+    if(timeLeft<=5) $('timer-bar').classList.add('urgent');
+    $('timer-text').textContent = Math.ceil(timeLeft);
+    if(timeLeft<=0) {
+      clearInterval(timerInterval);
+      if(!myAction) pick('attack'); // auto-attack on timeout
+    }
+  }, 100);
+}
+
+function stopTimer() { clearInterval(timerInterval); }
+
+// ===== PICK ACTION =====
+let hostAction = null, guestAction = null;
+
+function pick(action) {
+  if(myAction) return;
+  const me = isHost ? game.p1 : game.p2;
+  if(action==='heavy' && me.mp<15) return;
+  if(action==='heal' && me.mp<20) return;
+
+  myAction = action;
+  stopTimer();
+
+  // Highlight chosen
+  const btns = $('action-panel').querySelectorAll('.act');
+  const idx = ['attack','heavy','defend','heal'].indexOf(action);
+  btns.forEach((b,i) => { if(i===idx) b.classList.add('locked'); else b.disabled=true; });
+  $('dialog').textContent = `${ACTION_NAMES[action]} を選択！相手を待っています...`;
+
+  if(isHost) {
+    hostAction = action;
+    send({type:'action_locked'});
+    if(guestAction) resolveActions(guestAction);
+  } else {
+    send({type:'action', action});
+    send({type:'action_locked'}); // also notify
+  }
+}
+
+// ===== RESOLVE (HOST ONLY) =====
+function resolveActions(guestAct) {
+  guestAction = guestAct;
+  if(!hostAction) return; // wait for host's action too
+
+  const p1a = hostAction, p2a = guestAction;
+  const p1 = { ...game.p1 }, p2 = { ...game.p2 };
+  const results = [];
+
+  // Resolve P1 action
+  const r1 = resolveOne(p1a, p2a, p1, p2, 'P1');
+  results.push(r1);
+
+  // Resolve P2 action
+  const r2 = resolveOne(p2a, p1a, p2, p1, 'P2');
+  results.push(r2);
+
+  // MP regen
+  p1.mp = Math.min(p1.maxMp, p1.mp + 5);
+  p2.mp = Math.min(p2.maxMp, p2.mp + 5);
+
+  // Update game state
+  game.p1 = p1;
+  game.p2 = p2;
+  game.turn++;
+
+  // Check winner
+  let winner = null;
+  if(p1.hp<=0 && p2.hp<=0) winner = 'draw';
+  else if(p1.hp<=0) winner = 'p2';
+  else if(p2.hp<=0) winner = 'p1';
+
+  const resolveData = { type:'resolve', p1Action:p1a, p2Action:p2a, results, game:{...game}, winner };
+  send(resolveData);
+  showReveal(resolveData);
+
+  // Reset for next turn
+  hostAction = null;
+  guestAction = null;
+}
+
+function resolveOne(myAct, oppAct, me, opp, tag) {
+  const result = { actor:tag, action:myAct, dmg:0, heal:0, blocked:false };
+  switch(myAct) {
+    case 'attack': {
+      let base = 12 + Math.floor(Math.random()*7); // 12-18
+      const crit = Math.random()<0.12;
+      if(crit) base = Math.floor(base * 1.8);
+      if(oppAct==='defend') { base = Math.floor(base*0.35); result.blocked=true; }
+      opp.hp -= base;
+      result.dmg = base;
+      result.crit = crit;
+      break;
+    }
+    case 'heavy': {
+      me.mp -= 15;
+      let base = 22 + Math.floor(Math.random()*9); // 22-30
+      const crit = Math.random()<0.1;
+      if(crit) base = Math.floor(base*1.7);
+      if(oppAct==='defend') { base = Math.floor(base*0.5); result.blocked=true; }
+      opp.hp -= base;
+      result.dmg = base;
+      result.crit = crit;
+      break;
+    }
+    case 'defend': {
+      // Passive - reduction handled in opponent's action
+      result.dmg = 0;
+      break;
+    }
+    case 'heal': {
+      me.mp -= 20;
+      const heal = 22 + Math.floor(Math.random()*12); // 22-33
+      const actual = Math.min(heal, me.maxHp - me.hp);
+      me.hp += actual;
+      result.heal = actual;
+      break;
+    }
+  }
+  return result;
+}
+
+// ===== REVEAL =====
+function showReveal(data) {
+  stopTimer();
+  myAction = null;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'reveal';
+
+  const myAct = isHost ? data.p1Action : data.p2Action;
+  const oppAct = isHost ? data.p2Action : data.p1Action;
+  const myRes = isHost ? data.results[0] : data.results[1];
+  const oppRes = isHost ? data.results[1] : data.results[0];
+
+  // Build result text
+  let lines = [];
+  // My action result
+  if(myRes.action==='attack'||myRes.action==='heavy') {
+    lines.push(`あなたの${ACTION_NAMES[myRes.action]} → ${myRes.dmg}ダメージ${myRes.crit?'💥CRIT!':''}${myRes.blocked?' (防御された)':''}`);
+  } else if(myRes.action==='defend') {
+    lines.push(`あなたは防御した！`);
+  } else if(myRes.action==='heal') {
+    lines.push(`あなたはHP${myRes.heal}回復した！`);
+  }
+  // Opp action result
+  if(oppRes.action==='attack'||oppRes.action==='heavy') {
+    lines.push(`相手の${ACTION_NAMES[oppRes.action]} → ${oppRes.dmg}ダメージ${oppRes.crit?'💥CRIT!':''}${oppRes.blocked?' (防御された)':''}`);
+  } else if(oppRes.action==='defend') {
+    lines.push(`相手は防御した！`);
+  } else if(oppRes.action==='heal') {
+    lines.push(`相手はHP${oppRes.heal}回復した！`);
+  }
+
+  overlay.innerHTML = `
+    <div class="pixel reveal-title">⚡ ACTIONS ⚡</div>
+    <div class="reveal-actions">
+      <div class="reveal-card"><div class="who">あなた</div><div class="what">${ACTION_NAMES[myAct].split(' ')[0]}</div><div class="name">${ACTION_NAMES[myAct]}</div></div>
+      <div class="pixel reveal-vs">VS</div>
+      <div class="reveal-card"><div class="who">相手</div><div class="what">${ACTION_NAMES[oppAct].split(' ')[0]}</div><div class="name">${ACTION_NAMES[oppAct]}</div></div>
+    </div>
+    <div class="reveal-result">${lines.join('<br>')}</div>
+  `;
+  document.body.appendChild(overlay);
+
+  // Update state & bars
+  game = data.game;
+  const me = isHost ? game.p1 : game.p2;
+  const opp = isHost ? game.p2 : game.p1;
+
+  setTimeout(() => {
+    updateBars(me, opp);
+    // Show damage popups
+    if(oppRes.dmg > 0) { showDmg('s1', oppRes.dmg, oppRes.crit?'gold':'red'); flashHit(); $('f1').classList.add('shake'); setTimeout(()=>$('f1').classList.remove('shake'),400); }
+    if(oppRes.action==='defend'&&(myRes.action==='attack'||myRes.action==='heavy')) showDmg('s2',0,'gray');
+    if(myRes.dmg > 0) { showDmg('s2', myRes.dmg, myRes.crit?'gold':'red'); }
+    if(myRes.heal > 0) showDmg('s1', myRes.heal, 'green');
+    if(oppRes.heal > 0) showDmg('s2', oppRes.heal, 'green');
+  }, 800);
+
+  setTimeout(() => {
+    overlay.remove();
+    if(data.winner) {
+      showResult(data.winner);
+    } else {
+      // Next turn
+      $('opp-status').textContent = '';
+      $('dialog').textContent = `TURN ${game.turn} - アクションを選べ！`;
+      $('turn-badge').textContent = `TURN ${game.turn}`;
+      enableActions(me);
+      startTimer();
+    }
+  }, 3000);
+}
+
+function showDmg(targetId, amount, color) {
+  const el = $(targetId);
+  const rect = el.getBoundingClientRect();
+  const d = document.createElement('div');
+  d.className = `dmg ${color}`;
+  d.textContent = color==='green' ? `+${amount}` : color==='gray' ? 'BLOCK!' : `-${amount}`;
+  d.style.left = (rect.left + rect.width/2 - 20) + 'px';
+  d.style.top = (rect.top) + 'px';
+  document.body.appendChild(d);
+  setTimeout(()=>d.remove(), 900);
+}
+
+function flashHit() {
+  const f = document.createElement('div');
+  f.className = 'hit-flash';
+  document.body.appendChild(f);
+  setTimeout(()=>f.remove(), 150);
+}
+
+// ===== RESULT =====
+function showResult(winner) {
+  show('result');
+  const iWin = (isHost && winner==='p1') || (!isHost && winner==='p2');
+  const isDraw = winner==='draw';
+
+  const title = $('res-title');
+  if(isDraw) { title.textContent='🤝 DRAW!'; title.className='pixel result-title'; }
+  else if(iWin) { title.textContent='🏆 YOU WIN!'; title.className='pixel result-title win'; confetti(); }
+  else { title.textContent='💀 YOU LOSE'; title.className='pixel result-title lose'; }
+
+  $('res-msg').textContent = isDraw ? '引き分け！お互い力尽きた...' : iWin ? '勝利！見事な戦いだった！' : '敗北...次こそリベンジ！';
+
+  $('res-stats').innerHTML = `
+    📊 バトルレポート<br>
+    ━━━━━━━━━━━━━━━━<br>
+    🔄 ターン数: ${game.turn - 1}<br>
+    ❤️ 残りHP: ${Math.max(0, isHost?game.p1.hp:game.p2.hp)}<br>
+    💀 相手HP: ${Math.max(0, isHost?game.p2.hp:game.p1.hp)}<br>
+    ━━━━━━━━━━━━━━━━<br>
+    🏠 Room: ${roomCode}
+  `;
+}
+
+function confetti() {
+  const colors = ['#fbbf24','#ef4444','#22c55e','#6366f1','#f97316','#ec4899'];
+  for(let i=0;i<50;i++){
+    setTimeout(()=>{
+      const c=document.createElement('div');c.className='confetti';
+      c.style.left=Math.random()*100+'vw';
+      c.style.background=colors[Math.floor(Math.random()*colors.length)];
+      c.style.width=(6+Math.random()*8)+'px';c.style.height=(6+Math.random()*8)+'px';
+      c.style.borderRadius=Math.random()>.5?'50%':'2px';
+      c.style.animationDuration=(2+Math.random()*2)+'s';
+      document.body.appendChild(c);setTimeout(()=>c.remove(),4000);
+    },i*40);
+  }
+}
+
+function rematch() { send({type:'rematch_req'}); $('res-msg').textContent='リマッチを申し込み中...'; }
+
+function shareResult() {
+  const iWin = $('res-title').textContent.includes('WIN');
+  const isDraw = $('res-title').textContent.includes('DRAW');
+  const turns = game.turn-1;
+  const url = getShareUrl();
+  const text = isDraw
+    ? `🤝 Claude Code /pvp で引き分け！\n${turns}ターンの死闘だった...\n\n対戦しよう👇\n${url}`
+    : iWin
+    ? `🏆 Claude Code /pvp で勝利！\n${turns}ターンで撃破💪\n\n挑戦者求む👇\n${url}`
+    : `💀 Claude Code /pvp で敗北...\n${turns}ターン粘ったけど負けた\n\nリベンジ相手募集👇\n${url}`;
+  if(navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(()=>alert('クリップボードにコピーしました！\nX/Twitterに貼り付けよう！'));
+  } else { prompt('コピーしてシェア:', text); }
+}
+
+function backToLobby() { if(peer) peer.destroy(); peer=null; conn=null; game=null; $('conn').style.display='none'; show('lobby'); }
+
+// ===== KEYBOARD =====
+document.addEventListener('keydown', e => {
+  if($('battle').classList.contains('active')) {
+    switch(e.key) { case '1': pick('attack'); break; case '2': pick('heavy'); break; case '3': pick('defend'); break; case '4': pick('heal'); break; }
+  }
+  if($('lobby').classList.contains('active') && e.key==='Enter') {
+    if($('join-input').classList.contains('show')) joinRoom();
+    else createRoom();
+  }
+});
+
+$('room-input').addEventListener('input', e => { e.target.value = e.target.value.toUpperCase(); });
+</script>
+</body>
+</html>
